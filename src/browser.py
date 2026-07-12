@@ -32,7 +32,7 @@ class ChromeBrowser:
             options.binary_location = self.settings.chrome_binary
             options.debugger_address = self.settings.chrome_debugger_address
             self.driver = webdriver.Chrome(
-                service=Service(log_output=self.settings.chromedriver_log_path),
+                service=Service(log_output=str(self.settings.chromedriver_log_path)),
                 options=options,
             )
         except Exception:
