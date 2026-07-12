@@ -18,21 +18,21 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from config import settings
 from config.constants import (
     CONNECT_LABEL,
     LINKEDIN_GROW_URL,
     LINKEDIN_HOME_URL,
     LINKEDIN_MY_NETWORK_URL,
-    MY_NETWORK_LABEL,
     PENDING_LABEL,
 )
+from config.settings import Settings
 from src.models import PersonInfo
 
 
 class LinkedInClient:
-    def __init__(self, driver: WebDriver) -> None:
+    def __init__(self, driver: WebDriver, settings: Settings) -> None:
         self.driver = driver
+        self.settings = settings
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def open_suggestions(self) -> None:
@@ -74,14 +74,7 @@ class LinkedInClient:
             "arguments[0].scrollBy(0, Math.floor(arguments[0].clientHeight * 0.85));",
             workspace,
         )
-        time.sleep(settings.SCROLL_PAUSE_SECONDS)
-
-    def refresh_suggestions(self) -> None:
-        self.logger.info("Recarregando sugestoes de conexao")
-        self.driver.refresh()
-        self._wait_for_page_ready()
-        time.sleep(2)
-        self._scroll_workspace_for_suggestions()
+        time.sleep(self.settings.scroll_pause_seconds)
 
     def person_info(self, button: WebElement) -> PersonInfo:
         label = self._aria_label(button) or self._visible_text(button)
@@ -116,7 +109,7 @@ class LinkedInClient:
     def invite(self, button: WebElement) -> bool:
         label = self._aria_label(button) or self._visible_text(button)
         person_hint = self._extract_person_hint(label)
-        if settings.DRY_RUN:
+        if self.settings.dry_run:
             self.logger.info("[dry-run] Botao encontrado: %s", label)
             return True
         try:
@@ -132,7 +125,7 @@ class LinkedInClient:
         return self._wait_until_pending(button, person_hint)
 
     def _open_my_network(self) -> None:
-        wait = WebDriverWait(self.driver, settings.WAIT_SECONDS)
+        wait = WebDriverWait(self.driver, self.settings.wait_seconds)
         try:
             self.logger.info("Clicando em Minha rede")
             menu_item = wait.until(EC.element_to_be_clickable((By.XPATH, "//a[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÂÊÔÃÕÇ', 'abcdefghijklmnopqrstuvwxyzáéíóúâêôãõç'), 'minha rede') or .//*[normalize-space()='Minha rede' or normalize-space()='Minha Rede']]")))
@@ -148,10 +141,12 @@ class LinkedInClient:
         self.logger.info("Rolando pagina para carregar sugestoes de conexao")
         workspace = self.driver.find_element(By.CSS_SELECTOR, "main#workspace")
         self.driver.execute_script("arguments[0].scrollBy(0, Math.floor(arguments[0].clientHeight * 1.25));", workspace)
-        time.sleep(max(settings.SCROLL_PAUSE_SECONDS, 2))
+        time.sleep(max(self.settings.scroll_pause_seconds, 2))
 
     def _wait_for_page_ready(self) -> None:
-        WebDriverWait(self.driver, settings.WAIT_SECONDS).until(lambda driver: driver.execute_script("return document.readyState") == "complete")
+        WebDriverWait(self.driver, self.settings.wait_seconds).until(
+            lambda driver: driver.execute_script("return document.readyState") == "complete"
+        )
 
     def _wait_until_pending(self, original_button: WebElement, person_hint: str) -> bool:
         def pending(_: WebDriver) -> bool:
@@ -165,7 +160,7 @@ class LinkedInClient:
                 xpath = f"//*[self::button or self::a][contains(@aria-label, 'Pendente') and contains(@aria-label, {self._xpath_literal(person_hint)})]"
             return any(element.is_displayed() for element in self.driver.find_elements(By.XPATH, xpath))
         try:
-            WebDriverWait(self.driver, settings.WAIT_SECONDS).until(pending)
+            WebDriverWait(self.driver, self.settings.wait_seconds).until(pending)
             return True
         except TimeoutException:
             self.logger.warning("Clique feito, mas nao consegui confirmar estado Pendente")

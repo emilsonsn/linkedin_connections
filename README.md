@@ -11,7 +11,7 @@ Automação em Python com Selenium para percorrer as sugestões de conexão do L
 - Localiza botões **Conectar**, envia o convite (sem nota quando o modal oferece essa opção) e confirma a mudança para **Pendente**.
 - Extrai nome, descrição e URL do perfil a partir do card renderizado.
 - Aplica pausas aleatórias entre convites e uma pausa maior ao fim de cada lote.
-- Rola a lista em busca de novas sugestões; depois de 12 rolagens sem resultado, pode recarregar a página uma vez antes de encerrar.
+- Rola a lista em busca de novas sugestões; depois de 12 rolagens sem resultado, pode reiniciar o Chrome, reabrir as sugestões e continuar do ponto em que estava.
 - Salva uma linha na planilha para cada tentativa, inclusive no modo de simulação.
 - Gera logs no terminal e em um arquivo por execução.
 
@@ -63,7 +63,7 @@ DAILY_CONNECTION_LIMIT=3 DRY_RUN=true python main.py
 | `MIN_INVITATION_PAUSE_SECONDS` / `MAX_INVITATION_PAUSE_SECONDS` | `3.0` / `8.0` | Intervalo aleatório entre convites. |
 | `BATCH_SIZE` | `10` | Quantidade de convites antes da pausa de lote. |
 | `MIN_BATCH_PAUSE_SECONDS` / `MAX_BATCH_PAUSE_SECONDS` | `30.0` / `60.0` | Intervalo aleatório da pausa de lote. |
-| `MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS` | `1` | Recargas permitidas após esgotar as sugestões. |
+| `MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS` | `1` | Reinícios permitidos após esgotar as sugestões. |
 | `CHROME_BINARY` | `/usr/bin/google-chrome` | Executável do Chrome. |
 | `CHROME_USER_DATA_DIR` | `~/.linkedin-selenium` | Diretório do perfil persistente. |
 | `CHROME_DEBUGGER_ADDRESS` | `127.0.0.1:9222` | Endereço usado para anexar o Selenium ao Chrome. |
@@ -73,7 +73,7 @@ DAILY_CONNECTION_LIMIT=3 DRY_RUN=true python main.py
 | `DRY_RUN` | `false` | Quando `true`, encontra e registra os cards, mas não clica em **Conectar**. |
 | `KEEP_BROWSER_OPEN` | `true` | Quando `true`, não chama `quit()` no driver ao final. |
 
-`START_MAXIMIZED` consta no `.env.example`, mas não é consumida pela implementação atual. O Chrome também é iniciado com `--headless=new`, portanto essa opção não produz uma janela visível.
+O Chrome é iniciado com `--headless=new`, portanto não produz uma janela visível durante a automação.
 
 ## Saídas
 
@@ -89,10 +89,11 @@ Os logs ficam em `LOG_DIR`, com nomes como `linkedin_connections_2026-07-11_10-3
 
 ## Comportamentos e limitações atuais
 
-- Ao iniciar, o processo executa `pkill chrome`; isso encerra instâncias existentes do Chrome no sistema.
-- O Chrome é sempre iniciado headless e na porta de depuração `9222`, mesmo que `CHROME_DEBUGGER_ADDRESS` seja alterado. Mantenha o padrão para evitar falha na conexão do Selenium.
+- O processo gerencia e encerra apenas a instância de Chrome iniciada pelo próprio bot; feche manualmente qualquer Chrome que esteja usando o mesmo `CHROME_USER_DATA_DIR` antes de rodar a automação.
+- O limite de reinícios evita um ciclo infinito quando o LinkedIn não oferecer mais sugestões. A variável antiga `MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS` continua sendo aceita temporariamente como compatibilidade.
+- O Chrome é iniciado headless e usa a porta definida em `CHROME_DEBUGGER_ADDRESS`.
 - Se o login expirar, a execução termina com erro solicitando uma sessão autenticada; refaça a autenticação no perfil persistente.
-- Não há comando `linkedinbot`, agendador, interface gráfica ou suíte de testes versionada neste repositório. A entrada disponível é `python main.py`.
+- Não há comando `linkedinbot`, agendador ou interface gráfica. A entrada disponível é `python main.py`; os testes unitários podem ser executados com `python -m unittest discover -v`.
 - A estrutura e os textos do LinkedIn podem mudar e afetar os seletores, a extração dos dados ou a confirmação do convite.
 
 ## Estrutura
@@ -103,7 +104,7 @@ config/
 ├── constants.py        # URLs, rótulos e valores padrão
 └── settings.py         # Leitura de .env e variáveis de ambiente
 src/
-├── bot.py              # Loop de convites, limites, pausas e recargas
+├── bot.py              # Loop de convites, limites, pausas e reinícios
 ├── browser.py          # Inicialização do Chrome e conexão do Selenium
 ├── linkedin.py         # Navegação, leitura dos cards e envio de convites
 ├── logging_config.py   # Logs no terminal e em arquivo por execução

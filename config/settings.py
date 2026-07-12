@@ -1,21 +1,19 @@
-"""Runtime settings for the LinkedIn connection RPA.
-
-Edit this file when you need to change how the command behaves.
-Environment variables with the same names take precedence.
-"""
+"""Carregamento e validação das configurações de execução."""
 
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 from config.constants import (
-    DEFAULT_DAILY_CONNECTION_LIMIT,
     DEFAULT_BATCH_SIZE,
+    DEFAULT_DAILY_CONNECTION_LIMIT,
     DEFAULT_MAX_BATCH_PAUSE_SECONDS,
+    DEFAULT_MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS,
     DEFAULT_MAX_INVITATION_PAUSE_SECONDS,
-    DEFAULT_MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS,
     DEFAULT_MIN_BATCH_PAUSE_SECONDS,
     DEFAULT_MIN_INVITATION_PAUSE_SECONDS,
     DEFAULT_SCROLL_PAUSE_SECONDS,
@@ -25,7 +23,7 @@ from config.constants import (
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(PROJECT_DIR / ".env")
+ENV_FILE = PROJECT_DIR / ".env"
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -33,72 +31,113 @@ def _get_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
 
-    return value.strip().lower() in {"1", "true", "yes", "sim", "s"}
+    normalized_value = value.strip().lower()
+    if normalized_value in {"1", "true", "yes", "sim", "s"}:
+        return True
+    if normalized_value in {"0", "false", "no", "nao", "não", "n"}:
+        return False
+    raise ValueError(f"{name} deve ser um valor booleano valido.")
 
 
 def _get_int(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
         return default
-
-    return int(value)
+    try:
+        return int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} deve ser um numero inteiro.") from error
 
 
 def _get_float(name: str, default: float) -> float:
     value = os.getenv(name)
     if value is None:
         return default
+    try:
+        return float(value)
+    except ValueError as error:
+        raise ValueError(f"{name} deve ser um numero.") from error
 
-    return float(value)
 
+@dataclass(frozen=True, slots=True)
+class Settings:
+    daily_connection_limit: int
+    wait_seconds: int
+    scroll_pause_seconds: float
+    min_invitation_pause_seconds: float
+    max_invitation_pause_seconds: float
+    batch_size: int
+    min_batch_pause_seconds: float
+    max_batch_pause_seconds: float
+    max_browser_restarts_without_suggestions: int
+    chrome_binary: str
+    chrome_user_data_dir: Path
+    chrome_debugger_address: str
+    chromedriver_log_path: Path
+    output_xlsx_path: Path
+    log_dir: Path
+    log_level: str
+    dry_run: bool
+    keep_browser_open: bool
 
-DAILY_CONNECTION_LIMIT = _get_int(
-    "DAILY_CONNECTION_LIMIT",
-    DEFAULT_DAILY_CONNECTION_LIMIT,
-)
+    @property
+    def chrome_debugging_port(self) -> int:
+        _, separator, port = self.chrome_debugger_address.rpartition(":")
+        if not separator:
+            raise ValueError("CHROME_DEBUGGER_ADDRESS deve ter o formato host:porta.")
+        try:
+            parsed_port = int(port)
+        except ValueError as error:
+            raise ValueError("A porta de CHROME_DEBUGGER_ADDRESS deve ser numerica.") from error
+        if not 1 <= parsed_port <= 65535:
+            raise ValueError("A porta de CHROME_DEBUGGER_ADDRESS deve estar entre 1 e 65535.")
+        return parsed_port
 
-WAIT_SECONDS = _get_int("WAIT_SECONDS", DEFAULT_WAIT_SECONDS)
-SCROLL_PAUSE_SECONDS = _get_float(
-    "SCROLL_PAUSE_SECONDS",
-    DEFAULT_SCROLL_PAUSE_SECONDS,
-)
-MIN_INVITATION_PAUSE_SECONDS = _get_float(
-    "MIN_INVITATION_PAUSE_SECONDS",
-    DEFAULT_MIN_INVITATION_PAUSE_SECONDS,
-)
-MAX_INVITATION_PAUSE_SECONDS = max(
-    MIN_INVITATION_PAUSE_SECONDS,
-    _get_float("MAX_INVITATION_PAUSE_SECONDS", DEFAULT_MAX_INVITATION_PAUSE_SECONDS),
-)
-BATCH_SIZE = max(1, _get_int("BATCH_SIZE", DEFAULT_BATCH_SIZE))
-MIN_BATCH_PAUSE_SECONDS = _get_float(
-    "MIN_BATCH_PAUSE_SECONDS",
-    DEFAULT_MIN_BATCH_PAUSE_SECONDS,
-)
-MAX_BATCH_PAUSE_SECONDS = max(
-    MIN_BATCH_PAUSE_SECONDS,
-    _get_float("MAX_BATCH_PAUSE_SECONDS", DEFAULT_MAX_BATCH_PAUSE_SECONDS),
-)
-MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS = max(
-    0,
-    _get_int(
-        "MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS",
-        DEFAULT_MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS,
-    ),
-)
+    @classmethod
+    def load(cls) -> Settings:
+        """Carrega o `.env` sem sobrescrever variáveis já definidas no ambiente."""
+        load_dotenv(ENV_FILE)
 
-CHROME_BINARY = os.getenv("CHROME_BINARY", GOOGLE_CHROME_BINARY)
-CHROME_USER_DATA_DIR = Path(
-    os.getenv("CHROME_USER_DATA_DIR", str(Path.home() / ".linkedin-selenium"))
-)
-CHROME_DEBUGGER_ADDRESS = os.getenv("CHROME_DEBUGGER_ADDRESS", "127.0.0.1:9222")
-CHROMEDRIVER_LOG_PATH = os.getenv("CHROMEDRIVER_LOG_PATH", str(PROJECT_DIR / "logs" / "chromedriver.log"))
-OUTPUT_XLSX_PATH = os.getenv(
-    "OUTPUT_XLSX_PATH",
-    str(Path.home() / "Documentos" / "linkedin_connections.xlsx"),
-)
-LOG_DIR = Path(os.getenv("LOG_DIR", str(PROJECT_DIR / "logs")))
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-START_MAXIMIZED = _get_bool("START_MAXIMIZED", True)
-DRY_RUN = _get_bool("DRY_RUN", False)
-KEEP_BROWSER_OPEN = _get_bool("KEEP_BROWSER_OPEN", True)
+        min_invitation_pause_seconds = max(
+            0.0,
+            _get_float("MIN_INVITATION_PAUSE_SECONDS", DEFAULT_MIN_INVITATION_PAUSE_SECONDS),
+        )
+        min_batch_pause_seconds = max(
+            0.0,
+            _get_float("MIN_BATCH_PAUSE_SECONDS", DEFAULT_MIN_BATCH_PAUSE_SECONDS),
+        )
+        legacy_restarts = _get_int(
+            "MAX_PAGE_REFRESHES_WITHOUT_SUGGESTIONS",
+            DEFAULT_MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS,
+        )
+        configuration = cls(
+            daily_connection_limit=max(0, _get_int("DAILY_CONNECTION_LIMIT", DEFAULT_DAILY_CONNECTION_LIMIT)),
+            wait_seconds=max(1, _get_int("WAIT_SECONDS", DEFAULT_WAIT_SECONDS)),
+            scroll_pause_seconds=max(0.0, _get_float("SCROLL_PAUSE_SECONDS", DEFAULT_SCROLL_PAUSE_SECONDS)),
+            min_invitation_pause_seconds=min_invitation_pause_seconds,
+            max_invitation_pause_seconds=max(
+                min_invitation_pause_seconds,
+                _get_float("MAX_INVITATION_PAUSE_SECONDS", DEFAULT_MAX_INVITATION_PAUSE_SECONDS),
+            ),
+            batch_size=max(1, _get_int("BATCH_SIZE", DEFAULT_BATCH_SIZE)),
+            min_batch_pause_seconds=min_batch_pause_seconds,
+            max_batch_pause_seconds=max(
+                min_batch_pause_seconds,
+                _get_float("MAX_BATCH_PAUSE_SECONDS", DEFAULT_MAX_BATCH_PAUSE_SECONDS),
+            ),
+            max_browser_restarts_without_suggestions=max(
+                0,
+                _get_int("MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS", legacy_restarts),
+            ),
+            chrome_binary=os.getenv("CHROME_BINARY", GOOGLE_CHROME_BINARY),
+            chrome_user_data_dir=Path(os.getenv("CHROME_USER_DATA_DIR", str(Path.home() / ".linkedin-selenium"))),
+            chrome_debugger_address=os.getenv("CHROME_DEBUGGER_ADDRESS", "127.0.0.1:9222"),
+            chromedriver_log_path=Path(os.getenv("CHROMEDRIVER_LOG_PATH", str(PROJECT_DIR / "logs" / "chromedriver.log"))),
+            output_xlsx_path=Path(os.getenv("OUTPUT_XLSX_PATH", str(Path.home() / "Documentos" / "linkedin_connections.xlsx"))),
+            log_dir=Path(os.getenv("LOG_DIR", str(PROJECT_DIR / "logs"))),
+            log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            dry_run=_get_bool("DRY_RUN", False),
+            keep_browser_open=_get_bool("KEEP_BROWSER_OPEN", True),
+        )
+        _ = configuration.chrome_debugging_port
+        return configuration
