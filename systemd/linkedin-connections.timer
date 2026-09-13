@@ -1,0 +1,11 @@
+[Unit]
+Description=Roda o LinkedIn Connections RPA todo dia as 11h
+
+[Timer]
+OnCalendar=*-*-* 11:00:00
+# Se o PC estiver desligado as 11h, dispara uma unica vez assim que
+# ligar (nao acumula uma execucao por dia perdido).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

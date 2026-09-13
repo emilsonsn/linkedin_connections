@@ -17,6 +17,7 @@ from config.constants import (
     DEFAULT_MIN_BATCH_PAUSE_SECONDS,
     DEFAULT_MIN_INVITATION_PAUSE_SECONDS,
     DEFAULT_SCROLL_PAUSE_SECONDS,
+    DEFAULT_TARGET_KEYWORDS,
     DEFAULT_WAIT_SECONDS,
     GOOGLE_CHROME_BINARY,
 )
@@ -59,6 +60,13 @@ def _get_float(name: str, default: float) -> float:
         raise ValueError(f"{name} deve ser um numero.") from error
 
 
+def _get_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     daily_connection_limit: int
@@ -70,6 +78,7 @@ class Settings:
     min_batch_pause_seconds: float
     max_batch_pause_seconds: float
     max_browser_restarts_without_suggestions: int
+    target_keywords: tuple[str, ...]
     chrome_binary: str
     chrome_user_data_dir: Path
     chrome_debugger_address: str
@@ -129,6 +138,7 @@ class Settings:
                 0,
                 _get_int("MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS", legacy_restarts),
             ),
+            target_keywords=_get_list("TARGET_KEYWORDS", DEFAULT_TARGET_KEYWORDS),
             chrome_binary=os.getenv("CHROME_BINARY", GOOGLE_CHROME_BINARY),
             chrome_user_data_dir=Path(os.getenv("CHROME_USER_DATA_DIR", str(Path.home() / ".linkedin-selenium"))),
             chrome_debugger_address=os.getenv("CHROME_DEBUGGER_ADDRESS", "127.0.0.1:9222"),

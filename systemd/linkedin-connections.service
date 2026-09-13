@@ -1,0 +1,11 @@
+[Unit]
+Description=LinkedIn Connections RPA (execucao diaria)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# O placeholder abaixo e substituido pelo diretorio real do repositorio
+# na instalacao (ver README, secao "Execucao diaria automatica").
+WorkingDirectory=__REPO_DIR__
+ExecStart=__REPO_DIR__/linkedin_conn.sh

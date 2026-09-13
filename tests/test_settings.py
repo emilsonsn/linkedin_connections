@@ -17,6 +17,7 @@ def make_settings(address: str = "127.0.0.1:9222") -> Settings:
         min_batch_pause_seconds=30.0,
         max_batch_pause_seconds=60.0,
         max_browser_restarts_without_suggestions=1,
+        target_keywords=(),
         chrome_binary="google-chrome",
         chrome_user_data_dir=Path("/tmp/profile"),
         chrome_debugger_address=address,

@@ -9,6 +9,7 @@ Automação em Python com Selenium para percorrer as sugestões de conexão do L
 - Abre o Chrome com um perfil persistente e conecta o Selenium por depuração remota.
 - Acessa `Minha rede` e a página de sugestões de conexões.
 - Localiza botões **Conectar**, envia o convite (sem nota quando o modal oferece essa opção) e confirma a mudança para **Pendente**.
+- Filtra as sugestões por área de interesse, comparando palavras-chave configuráveis com a descrição/cargo do card; quem não bate é apenas pulado (não conecta, não conta no limite, não vai para a planilha).
 - Extrai nome, descrição e URL do perfil a partir do card renderizado.
 - Aplica pausas aleatórias entre convites e uma pausa maior ao fim de cada lote.
 - Rola a lista em busca de novas sugestões; depois de 12 rolagens sem resultado, pode reiniciar o Chrome, reabrir as sugestões e continuar do ponto em que estava.
@@ -64,6 +65,7 @@ DAILY_CONNECTION_LIMIT=3 DRY_RUN=true python main.py
 | `BATCH_SIZE` | `10` | Quantidade de convites antes da pausa de lote. |
 | `MIN_BATCH_PAUSE_SECONDS` / `MAX_BATCH_PAUSE_SECONDS` | `30.0` / `60.0` | Intervalo aleatório da pausa de lote. |
 | `MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS` | `1` | Reinícios permitidos após esgotar as sugestões. |
+| `TARGET_KEYWORDS` | recrutadores (`recruiter`, `talent acquisition`, `sourcer`, `rh`...) + Python/back-end, React/front-end e DevOps (ver `.env.example`) | Lista separada por vírgula comparada (sem acento/caixa) com a descrição/cargo do card. Só conecta com quem bate em pelo menos uma palavra-chave. Vazio desativa o filtro. |
 | `CHROME_BINARY` | `/usr/bin/google-chrome` | Executável do Chrome. |
 | `CHROME_USER_DATA_DIR` | `~/.linkedin-selenium` | Diretório do perfil persistente. |
 | `CHROME_DEBUGGER_ADDRESS` | `127.0.0.1:9222` | Endereço usado para anexar o Selenium ao Chrome. |
@@ -74,6 +76,20 @@ DAILY_CONNECTION_LIMIT=3 DRY_RUN=true python main.py
 | `KEEP_BROWSER_OPEN` | `true` | Quando `true`, não chama `quit()` no driver ao final. |
 
 O Chrome é iniciado com `--headless=new`, portanto não produz uma janela visível durante a automação.
+
+### Escolhendo a área de interesse (`TARGET_KEYWORDS`)
+
+O bot só envia convite para quem tem, na descrição/cargo exibido no card de sugestão, pelo menos uma das palavras-chave definidas em `TARGET_KEYWORDS` (no `.env`). Quem não bate em nenhuma é apenas pulado — não conta no limite diário, não vai para a planilha.
+
+- Formato: lista separada por vírgula, sem espaço extra necessário (`termo1,termo2,termo3`).
+- A comparação ignora maiúsculas/minúsculas e acentos, e é por substring (ex.: `react` bate em "Desenvolvedora React Native").
+- Padrão atual (definido em `config/constants.py` e replicado no `.env`/`.env.example`): recrutadores/RH (`recruiter`, `tech recruiter`, `talent acquisition`, `sourcer`, `headhunter`, `rh`, etc.) e as áreas técnicas Python/back-end, React/front-end e DevOps — lista completa nesses arquivos.
+- Para mudar o público-alvo, edite a variável `TARGET_KEYWORDS` no seu `.env` (não precisa mexer no código). Exemplo, focando só em recrutadores e Python:
+  ```bash
+  TARGET_KEYWORDS=recruiter,tech recruiter,talent acquisition,python,django,back-end,backend
+  ```
+- Para desativar o filtro e voltar a conectar com qualquer sugestão, deixe a variável vazia: `TARGET_KEYWORDS=`.
+- Teste uma lista nova sem enviar convites de verdade: `DRY_RUN=true python main.py` e acompanhe o log — perfis fora do filtro aparecem como "Fora do filtro de area".
 
 ## Saídas
 
@@ -96,10 +112,44 @@ Os logs ficam em `LOG_DIR`, com nomes como `linkedin_connections_2026-07-11_10-3
 - Não há comando `linkedinbot`, agendador ou interface gráfica. A entrada disponível é `python main.py`; os testes unitários podem ser executados com `python -m unittest discover -v`.
 - A estrutura e os textos do LinkedIn podem mudar e afetar os seletores, a extração dos dados ou a confirmação do convite.
 
+## Execução diária automática (systemd timer)
+
+O bot pode ser agendado para rodar todo dia sem depender de cron. Diferente do cron puro, um systemd timer com `Persistent=true` recupera a execução perdida assim que o PC é ligado (mesmo que já tenha passado do horário), mas dispara **só uma vez** para o dia mais recente — não acumula uma execução por dia que ficou desligado.
+
+Como isso não é usado em notebook e desktop ao mesmo tempo (as duas máquinas rodam de forma independente, sem sincronizar entre si), o script `linkedin_conn.sh` guarda localmente a data da última execução (`~/.local/state/linkedin-connections/last_run_date`) e recusa rodar de novo no mesmo dia naquela máquina — evita tanto um "catch-up" duplicado do systemd quanto qualquer disparo repetido no mesmo dia.
+
+Arquivos de unit em `systemd/` (versionados). O `linkedin-connections.service` usa o placeholder `__REPO_DIR__` no lugar do caminho do repositório, então funciona em qualquer máquina/usuário independente de onde o repositório foi clonado — a instalação abaixo substitui o placeholder pelo diretório atual:
+
+```bash
+cd /caminho/onde/voce/clonou/linkedin_connections   # rode a partir da raiz do repositorio
+REPO_DIR="$(pwd)"
+
+mkdir -p ~/.config/systemd/user
+sed "s#__REPO_DIR__#$REPO_DIR#g" systemd/linkedin-connections.service > ~/.config/systemd/user/linkedin-connections.service
+cp systemd/linkedin-connections.timer ~/.config/systemd/user/
+
+systemctl --user daemon-reload
+systemctl --user enable --now linkedin-connections.timer
+loginctl enable-linger "$(whoami)"   # permite rodar mesmo sem sessao grafica ativa apos o boot
+```
+
+Comandos úteis:
+
+```bash
+systemctl --user list-timers linkedin-connections.timer   # proxima execucao agendada
+systemctl --user status linkedin-connections.service       # status/log da ultima execucao
+journalctl --user -u linkedin-connections.service -f       # acompanhar em tempo real
+systemctl --user disable --now linkedin-connections.timer  # desativar o agendamento
+```
+
+O horário é definido em `systemd/linkedin-connections.timer` (`OnCalendar`, padrão `11:00`); edite e rode `systemctl --user daemon-reload` para aplicar.
+
 ## Estrutura
 
 ```text
 main.py                 # Ponto de entrada e tratamento do ciclo de execução
+linkedin_conn.sh         # Wrapper de execucao diaria (trava de 1x/dia por maquina)
+systemd/                 # Unit files do timer/service para agendamento diario
 config/
 ├── constants.py        # URLs, rótulos e valores padrão
 └── settings.py         # Leitura de .env e variáveis de ambiente

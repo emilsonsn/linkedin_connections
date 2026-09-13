@@ -3,12 +3,15 @@ from __future__ import annotations
 import logging
 import random
 import time
+import unicodedata
 from collections.abc import Callable
+
+from selenium.webdriver.remote.webelement import WebElement
 
 from config.constants import MAX_SCROLL_ATTEMPTS_WITHOUT_CLICK
 from config.settings import Settings
 from src.linkedin import LinkedInClient
-from src.models import RunStats
+from src.models import PersonInfo, RunStats
 from src.storage import ConnectionWorkbook
 
 
@@ -30,9 +33,12 @@ class ConnectionBot:
         self.linkedin.open_suggestions()
         stats = RunStats()
         browser_restarts_without_suggestions = 0
+        seen_profiles: set[str] = set()
         while stats.clicked < self.settings.daily_connection_limit:
             buttons = self.linkedin.find_connect_buttons()
-            if not buttons:
+            candidate = self._pick_candidate(buttons, seen_profiles)
+
+            if candidate is None:
                 stats.scrolls_without_click += 1
                 if stats.scrolls_without_click >= MAX_SCROLL_ATTEMPTS_WITHOUT_CLICK:
                     if (
@@ -49,6 +55,7 @@ class ConnectionBot:
                         self.linkedin = self.restart_browser()
                         self.linkedin.open_suggestions()
                         stats.scrolls_without_click = 0
+                        seen_profiles.clear()
                         continue
                     self.logger.info("Nenhuma sugestao encontrada apos %s rolagens", stats.scrolls_without_click)
                     break
@@ -56,8 +63,7 @@ class ConnectionBot:
                 continue
 
             stats.scrolls_without_click = 0
-            button = buttons[0]
-            person = self.linkedin.person_info(button)
+            button, person = candidate
             self.logger.info("Tentando conectar: %s - %s", person.name, person.description)
             clicked = self.linkedin.invite(button)
             status = "dry_run" if self.settings.dry_run else ("pendente_confirmado" if clicked else "nao_confirmado")
@@ -70,6 +76,32 @@ class ConnectionBot:
             else:
                 stats.skipped += 1
         return stats
+
+    def _pick_candidate(
+        self, buttons: list[WebElement], seen_profiles: set[str]
+    ) -> tuple[WebElement, PersonInfo] | None:
+        for button in buttons:
+            person = self.linkedin.person_info(button)
+            key = person.profile_url or person.name
+            if key in seen_profiles:
+                continue
+            seen_profiles.add(key)
+            if not self._matches_filter(person):
+                self.logger.info("Fora do filtro de area: %s - %s", person.name, person.description)
+                continue
+            return button, person
+        return None
+
+    def _matches_filter(self, person: PersonInfo) -> bool:
+        if not self.settings.target_keywords:
+            return True
+        description = self._normalize(person.description)
+        return any(self._normalize(keyword) in description for keyword in self.settings.target_keywords)
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        decomposed = unicodedata.normalize("NFKD", text)
+        return "".join(char for char in decomposed if not unicodedata.combining(char)).lower()
 
     def _wait_after_invitation(self, invitations_sent: int) -> None:
         if self.settings.dry_run or invitations_sent >= self.settings.daily_connection_limit:

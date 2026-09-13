@@ -19,3 +19,51 @@ DEFAULT_MIN_BATCH_PAUSE_SECONDS = 30.0
 DEFAULT_MAX_BATCH_PAUSE_SECONDS = 60.0
 MAX_SCROLL_ATTEMPTS_WITHOUT_CLICK = 12
 DEFAULT_MAX_BROWSER_RESTARTS_WITHOUT_SUGGESTIONS = 1
+DEFAULT_TARGET_KEYWORDS = (
+    # Recrutamento e RH (termos usados em titulos no Brasil e no exterior)
+    "recruiter",
+    "tech recruiter",
+    "it recruiter",
+    "recrutador",
+    "recrutadora",
+    "recrutamento",
+    "talent acquisition",
+    "talent partner",
+    "talent scout",
+    "sourcer",
+    "headhunter",
+    "hr business partner",
+    "hrbp",
+    "people partner",
+    "people ops",
+    "rh",
+    # Python / back-end
+    "python",
+    "django",
+    "flask",
+    "fastapi",
+    "back-end",
+    "backend",
+    "back end",
+    # React / front-end
+    "react",
+    "reactjs",
+    "react.js",
+    "front-end",
+    "frontend",
+    "javascript",
+    "typescript",
+    "node.js",
+    "nodejs",
+    "fullstack",
+    "full-stack",
+    # DevOps
+    "devops",
+    "sre",
+    "site reliability",
+    "kubernetes",
+    "docker",
+    "platform engineer",
+    "infraestrutura",
+    "cloud engineer",
+)
