@@ -4,6 +4,8 @@ import logging
 import time
 from typing import Iterable
 
+from time import sleep
+
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
@@ -38,6 +40,7 @@ class LinkedInClient:
     def open_suggestions(self) -> None:
         self.logger.info("Abrindo LinkedIn")
         self.driver.get(LINKEDIN_HOME_URL)
+        sleep(7)
         self._wait_for_page_ready()
         if "/login" in self.driver.current_url:
             raise RuntimeError(
