@@ -84,6 +84,7 @@ class ChromeBrowser:
                 "--disable-dev-shm-usage",
                 "--headless=new",
                 "--disable-gpu",
+                "--password-store=basic",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

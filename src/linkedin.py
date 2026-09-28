@@ -40,7 +40,7 @@ class LinkedInClient:
     def open_suggestions(self) -> None:
         self.logger.info("Abrindo LinkedIn")
         self.driver.get(LINKEDIN_HOME_URL)
-        sleep(7)
+        sleep(15)
         self._wait_for_page_ready()
         if "/login" in self.driver.current_url:
             raise RuntimeError(
